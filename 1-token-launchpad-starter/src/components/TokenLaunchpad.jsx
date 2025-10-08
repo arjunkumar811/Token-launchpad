@@ -1,6 +1,6 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
-import { MINT_SIZE, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import { createInitializeMint2Instruction, MINT_SIZE, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
 export function TokenLaunchpad() {
     const wallet = useWallet();
@@ -22,11 +22,17 @@ export function TokenLaunchpad() {
                 newAccountPubkey: mintKeypair.publicKey,
                 space: MINT_SIZE,
                 lamports,
-                programId: TOKEN_2022_PROGRAM_ID
-
-            })
-        )        
+                programId: TOKEN_2022_PROGRAM_ID,
+            }),
+            createInitializeMint2Instruction(mintKeypair.publicKey, 9, wallet.publicKey, wallet.publicKey, TOKEN_2022_PROGRAM_ID)
+        );   
        
+        transaction.feePayer = wallet.publicKey;
+        transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+        transaction.partialSign(mintKeypair);
+
+        await wallet.sendTransaction(transaction, connection);
+        console.log(`Token mint created at ${mintKeypair.publicKey.toBase58()}`);
     }
 
 
