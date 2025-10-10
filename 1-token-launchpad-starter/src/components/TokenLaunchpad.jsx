@@ -76,6 +76,7 @@ export function TokenLaunchpad() {
         return Object.keys(newErrors).length === 0;
     };
 
+    // Function for handling successful token actions
     const handleActionSuccess = () => {};
     
     const resetForm = () => {
@@ -249,7 +250,7 @@ export function TokenLaunchpad() {
             
             console.log("Tokens minted successfully!");
             
-            // All transactions completed successfully, now save the token info
+
             const tokenData = {
                 mintAddress: mintKeypair.publicKey.toBase58(),
                 associatedToken: associatedTokenAddress.toString(),
@@ -302,11 +303,11 @@ export function TokenLaunchpad() {
             
             setErrors({ general: errorMessage });
             
-            // Alert the user about the error
+
             alert(`Error: ${errorMessage}\n\nPlease try again. If the error persists, try refreshing the page or using a different network.`);
         } finally {
             setIsLoading(false);
-            setCreateStep(0); // Reset progress tracking
+            setCreateStep(0);
         }
     }
 

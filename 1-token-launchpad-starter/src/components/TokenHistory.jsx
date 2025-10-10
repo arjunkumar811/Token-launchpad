@@ -9,13 +9,7 @@ export function TokenHistory({ tokenData, network }) {
     const [error, setError] = useState("");
     const [historyFetched, setHistoryFetched] = useState(false);
 
-    // Disable automatic transaction history fetching to prevent wallet prompts
     useEffect(() => {
-        // We'll let the user manually fetch transaction history instead of doing it automatically
-        // This prevents repeated wallet prompts
-        // if (tokenData?.mintAddress) {
-        //     fetchTransactionHistory();
-        // }
     }, [tokenData?.mintAddress, network]);
 
     async function fetchTransactionHistory() {
@@ -25,11 +19,11 @@ export function TokenHistory({ tokenData, network }) {
         setError("");
         
         try {
-            // Mark history as fetched to show the refresh button later
+
             setHistoryFetched(true);
             
             const mintAddress = new PublicKey(tokenData.mintAddress);
-            // Use a lower limit to reduce chance of timeouts
+
             const signatures = await connection.getSignaturesForAddress(mintAddress, { limit: 5 });
             
             if (!signatures.length) {
@@ -71,8 +65,7 @@ export function TokenHistory({ tokenData, network }) {
     function determineTransactionType(tx) {
         if (!tx) return 'Unknown';
         
-        // This is a simplified way to determine tx type
-        // In a real app, we would decode the transaction data and instructions
+
         const logMessages = tx.meta?.logMessages || [];
         const logString = logMessages.join(' ');
         

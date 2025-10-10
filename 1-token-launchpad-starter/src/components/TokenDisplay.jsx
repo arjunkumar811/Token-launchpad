@@ -8,7 +8,7 @@ export function TokenDisplay({ tokenData }) {
     const [balance, setBalance] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     
-    // Fetch balance once when the component mounts
+
     useEffect(() => {
         if (tokenData?.mintAddress && tokenData?.associatedToken) {
             fetchBalance();
@@ -24,26 +24,26 @@ export function TokenDisplay({ tokenData }) {
         try {
             setIsLoading(true);
             
-            // Make sure we have a valid PublicKey for the token account
+
             const tokenAccountPubkey = new PublicKey(tokenData.associatedToken);
             
-            // Fetch token account info with explicit commitment
+
             const accountInfo = await connection.getTokenAccountBalance(
                 tokenAccountPubkey,
                 "confirmed"
             );
             
             if (accountInfo && accountInfo.value) {
-                // Format with proper decimals
+
                 const balanceValue = accountInfo.value.uiAmount;
                 setBalance(balanceValue);
             } else {
-                // If we got a response but no proper value
+
                 setBalance(tokenData.supply || 0);
             }
         } catch (error) {
             console.error("Error fetching token balance:", error);
-            // Fallback to initial supply
+
             setBalance(tokenData.supply || 0);
         } finally {
             setIsLoading(false);
