@@ -8,7 +8,7 @@ import {
   getAssociatedTokenAddress, 
   createMintToInstruction 
 } from "@solana/spl-token";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { TokenForm } from "./TokenForm";
 import { TokenSettings } from "./TokenSettings";
@@ -16,6 +16,7 @@ import { TokenDisplay } from "./TokenDisplay";
 import { TokenActions } from "./TokenActions";
 import { NetworkSelector } from "./NetworkSelector";
 import { TokenHistory } from "./TokenHistory";
+import { TokenSelector } from "./TokenSelector";
 
 export function TokenLaunchpad() {
     const wallet = useWallet();
@@ -45,6 +46,7 @@ export function TokenLaunchpad() {
     });
     
     const [createdToken, setCreatedToken] = useState(null);
+    const [allTokens, setAllTokens] = useState([]);
     const [errors, setErrors] = useState({});
     const [isLoading, setIsLoading] = useState(false);
     const [currentStep, setCurrentStep] = useState('create');
@@ -76,8 +78,33 @@ export function TokenLaunchpad() {
         return Object.keys(newErrors).length === 0;
     };
 
-    // Function for handling successful token actions
-    const handleActionSuccess = () => {};
+    const handleActionSuccess = (actionType, actionAmount) => {
+        if (createdToken) {
+            const updatedToken = { 
+                ...createdToken, 
+                timestamp: new Date().toISOString(),
+                _forceUpdate: Date.now(),
+                _lastAction: {
+                    type: actionType || 'unknown',
+                    amount: actionAmount || '0',
+                    timestamp: Date.now()
+                }
+            };
+            
+            setCreatedToken(updatedToken);
+            
+            try {
+                const savedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+                const updatedTokens = savedTokens.map(token => 
+                    token.mintAddress === updatedToken.mintAddress ? updatedToken : token
+                );
+                localStorage.setItem('createdTokens', JSON.stringify(updatedTokens));
+                setAllTokens(updatedTokens);
+            } catch (e) {
+                console.error("Error updating token in localStorage:", e);
+            }
+        }
+    };
     
     const resetForm = () => {
         setFormData({
@@ -97,8 +124,86 @@ export function TokenLaunchpad() {
         });
         setErrors({});
     };
+    
+    /**
+     * Function to handle removing a token from the list
+     * 
+     * This only removes the token from the localStorage list - it does not
+     * affect the token on the blockchain in any way.
+     */
+    const handleRemoveToken = (tokenToRemove) => {
+        try {
+            // Get current tokens from localStorage
+            const savedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+            
+            // Filter out the token to remove
+            const updatedTokens = savedTokens.filter(token => token.mintAddress !== tokenToRemove.mintAddress);
+            
+            // Save the updated list back to localStorage
+            localStorage.setItem('createdTokens', JSON.stringify(updatedTokens));
+            
+            // Update state
+            setAllTokens(updatedTokens);
+            
+            // If we're removing the currently selected token, we need to select a different one
+            if (createdToken && createdToken.mintAddress === tokenToRemove.mintAddress) {
+                if (updatedTokens.length > 0) {
+                    // Select the first token in the updated list
+                    setCreatedToken(updatedTokens[0]);
+                } else {
+                    // If no tokens left, clear the selection and go back to create view
+                    setCreatedToken(null);
+                    setCurrentStep('create');
+                }
+            }
+            
+            console.log(`Token ${tokenToRemove.name} (${tokenToRemove.symbol}) removed from local storage`);
+        } catch (error) {
+            console.error("Error removing token:", error);
+        }
+    };
 
     const [createStep, setCreateStep] = useState(0);
+    
+    /**
+     * Load tokens from localStorage when component mounts
+     * 
+     * This effect ensures that tokens persist across page refreshes by:
+     * 1. Loading the list of tokens from localStorage
+     * 2. Storing them in the allTokens state variable
+     * 3. Automatically selecting the most recently created token
+     * 4. Switching to the 'manage' view if tokens exist
+     */
+    useEffect(() => {
+        try {
+            // Get all tokens from localStorage - if none exist, use empty array
+            const savedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+            
+            console.log(`Found ${savedTokens.length} saved tokens in localStorage`);
+            
+            // Store all tokens in state
+            setAllTokens(savedTokens);
+            
+            // If there are any saved tokens, load the most recent one
+            if (savedTokens.length > 0) {
+                // Sort tokens by timestamp (newest first) and take the first one
+                const sortedTokens = savedTokens.sort((a, b) => 
+                    new Date(b.timestamp) - new Date(a.timestamp)
+                );
+                
+                // Set the most recent token as the current token
+                setCreatedToken(sortedTokens[0]);
+                
+                // If a token is loaded, switch to the manage view
+                if (sortedTokens[0]) {
+                    setCurrentStep('manage');
+                    console.log("Loaded most recent token:", sortedTokens[0].name, "with mint address:", sortedTokens[0].mintAddress);
+                }
+            }
+        } catch (error) {
+            console.error("Error loading tokens from localStorage:", error);
+        }
+    }, []);  // Empty dependency array means this runs once on mount
     
     async function createToken() {
         if (!wallet.connected) {
@@ -272,12 +377,23 @@ export function TokenLaunchpad() {
             setCreateProgress(100);
             alert(`Congratulations! Token "${formData.name}" created successfully!\n\nToken Details:\n- Name: ${formData.name}\n- Symbol: ${formData.symbol.toUpperCase()}\n- Decimals: ${decimals}\n- Supply: ${formData.supply}\n- Mint Address: ${mintKeypair.publicKey.toString()}\n\nNote: Your token may display as "Unknown Token" in some wallets. This is normal for tokens without on-chain metadata. You can now manage your token in the "Manage Your Token" section.`);
             
+            // Save the token to localStorage so it persists after page refresh
             try {
+                // Get existing tokens
                 const savedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+                
+                // Add the new token to the list
                 savedTokens.push(tokenData);
+                
+                // Save back to localStorage
                 localStorage.setItem('createdTokens', JSON.stringify(savedTokens));
+                console.log(`Token "${tokenData.name}" saved to localStorage. You now have ${savedTokens.length} saved tokens.`);
+                
+                // Update the allTokens state with the new list
+                setAllTokens(savedTokens);
             } catch (e) {
                 console.error('Error saving to localStorage:', e);
+                // Even if localStorage fails, the current session will still work
             }
             
             resetForm();
@@ -617,6 +733,14 @@ export function TokenLaunchpad() {
                     
                     {createdToken ? (
                         <div style={{ width: '100%' }}>
+                            {/* Use our new TokenSelector component */}
+                            <TokenSelector 
+                                allTokens={allTokens}
+                                currentToken={createdToken}
+                                onSelectToken={setCreatedToken}
+                                onRemoveToken={handleRemoveToken}
+                            />
+                            
                             <TokenDisplay tokenData={createdToken} />
                             
                             <TokenActions 

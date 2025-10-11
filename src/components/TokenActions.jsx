@@ -3,6 +3,70 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, createBurnInstruction, createMintToInstruction, createTransferInstruction, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 
+const Toast = {
+    show(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `token-toast ${type}`;
+        toast.innerHTML = message;
+        
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
+            const style = document.createElement('style');
+            style.textContent = `
+                #toast-container {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    z-index: 9999;
+                }
+                .token-toast {
+                    min-width: 300px;
+                    margin-bottom: 10px;
+                    padding: 15px 20px;
+                    border-radius: 4px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    animation: toast-slide-in 0.3s ease forwards;
+                    font-weight: 500;
+                    font-size: 14px;
+                    z-index: 10000;
+                }
+                .token-toast.success {
+                    background-color: #4caf50;
+                    color: white;
+                }
+                .token-toast.error {
+                    background-color: #f44336;
+                    color: white;
+                }
+                .token-toast.info {
+                    background-color: #2196f3;
+                    color: white;
+                }
+                @keyframes toast-slide-in {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, 3000);
+    }
+};
+
 export function TokenActions({ tokenData, onActionSuccess }) {
     const { connection } = useConnection();
     const wallet = useWallet();
@@ -47,13 +111,17 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                 setIsLoading(false);
                 setIsProcessingTx(false);
                 setError("Transaction taking too long. Please try again.");
+                Toast.show("Transaction timeout. Your balance will update if the transaction still went through.", "error");
             }
-        }, 45000);
+        }, 4000);
 
         setIsLoading(true);
         setError("");
         setTxId("");
         setIsProcessingTx(true);
+        
+        // Show toast notification that transaction is being submitted
+        Toast.show("Submitting transaction to blockchain...", 'info');
 
         try {
             const mintPubkey = new PublicKey(tokenData.mintAddress);
@@ -168,64 +236,84 @@ export function TokenActions({ tokenData, onActionSuccess }) {
             const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('processed');
             transaction.feePayer = wallet.publicKey;
             transaction.recentBlockhash = blockhash;
+            
+            Toast.show(`Submitting ${activeAction} transaction...`, 'info');
+            
             const signature = await wallet.sendTransaction(transaction, connection, {
-                skipPreflight: false,
-                preflightCommitment: 'confirmed',
-                maxRetries: 1
+                skipPreflight: true,
+                preflightCommitment: 'processed',
+                maxRetries: 2
             });
             
             console.log(`Transaction sent: ${signature}`);
             
             if (isMounted) {
+                // Set transaction ID
                 setTxId(signature);
                 
-                const timeoutId = setTimeout(() => {
-                    if (isMounted) {
-                        if (typeof onActionSuccess === 'function') {
-                            onActionSuccess();
-                        }
-                        setIsLoading(false);
-                        setIsProcessingTx(false);
-                    }
-                }, 20000);
-                
-                try {
-                    try {
-                        await Promise.race([
-                            connection.confirmTransaction({
-                                signature,
-                                blockhash,
-                                lastValidBlockHeight
-                            }, 'processed'),
-                            new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Fast confirmation timeout')), 5000)
-                            )
-                        ]);
-                    } catch (fastConfirmError) {
-                        await Promise.race([
-                            connection.confirmTransaction(signature, 'confirmed'),
-                            new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Transaction confirmation timeout')), 10000)
-                            )
-                        ]);
-                    }
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (isMounted && typeof onActionSuccess === 'function') {
-                        onActionSuccess();
-                    }
-                } catch (confirmError) {
-                    console.log("Confirmation error or timeout:", confirmError.message);
-                } finally {
-                    clearTimeout(timeoutId);
+                let actionText = "";
+                switch(activeAction) {
+                    case "transfer":
+                        actionText = `Transferred ${amount} ${tokenData.symbol}`;
+                        break;
+                    case "burn":
+                        actionText = `Burned ${amount} ${tokenData.symbol}`;
+                        break;
+                    case "mint":
+                        actionText = `Minted ${amount} ${tokenData.symbol}`;
+                        break;
+                    default:
+                        actionText = "Transaction sent";
                 }
+                
+                Toast.show(`${actionText} successfully!`, 'success');
+                
+                if (signature) {
+                    const explorerUrl = `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+                    console.log(`Transaction submitted: ${explorerUrl}`);
+                }
+                
+                setIsLoading(false);
+                setIsProcessingTx(false);
+                
+                if (typeof onActionSuccess === 'function') {
+                    onActionSuccess(activeAction, amount);
+                }
+                
+                setTimeout(() => {
+                    if (isMounted) {
+                        if (navigator.vibrate) {
+                            navigator.vibrate(100);
+                        }
+                    }
+                }, 100);
+                connection.confirmTransaction({
+                    signature,
+                    blockhash,
+                    lastValidBlockHeight
+                }, 'processed').then(() => {
+                    if (isMounted) {
+                        Toast.show(`Transaction confirmed on blockchain! <a href="https://explorer.solana.com/tx/${signature}?cluster=devnet" target="_blank" style="color:white;text-decoration:underline;">View on Explorer</a>`, 'info');
+                        setTxId(signature);
+                        
+                        if (typeof onActionSuccess === 'function') {
+                            onActionSuccess(activeAction, amount);
+                        }
+                    }
+                }).catch(error => {
+                    console.log("Confirmation error:", error.message);
+                    if (isMounted) {
+                        Toast.show(`Warning: Transaction may not have been confirmed. Check explorer.`, 'error');
+                    }
+                });
             }
             
         } catch (error) {
             console.error(`Error during ${activeAction} operation:`, error);
             if (isMounted) {
-                setError(error.message || `Failed to ${activeAction} tokens`);
+                const errorMsg = error.message || `Failed to ${activeAction} tokens`;
+                setError(errorMsg);
+                Toast.show(`Error: ${errorMsg}`, 'error');
             }
         } finally {
             clearTimeout(maxTransactionTimeout);
@@ -461,7 +549,7 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                     </div>
                 )}
                 
-                {txId && (
+                {txId && !isLoading && (
                     <div style={{ 
                         color: '#2e7d32',
                         backgroundColor: '#e8f5e9',
@@ -470,7 +558,8 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                         marginBottom: '25px',
                         border: '2px solid #66bb6a',
                         wordBreak: 'break-all',
-                        boxShadow: '0 4px 12px rgba(102, 187, 106, 0.15)'
+                        boxShadow: '0 4px 12px rgba(102, 187, 106, 0.15)',
+                        animation: 'fadeIn 0.3s ease-in'
                     }}>
                         <div style={{ 
                             fontWeight: 'bold', 
@@ -483,7 +572,9 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
                             </svg>
-                            Transaction Successful!
+                            {activeAction === "burn" ? "Tokens Burned Successfully!" : 
+                             activeAction === "transfer" ? "Tokens Transferred Successfully!" :
+                             "Transaction Successful!"}
                         </div>
                         <div style={{ fontSize: '16px', backgroundColor: 'rgba(255, 255, 255, 0.5)', padding: '10px', borderRadius: '6px' }}>
                             <strong>Transaction ID: </strong>{txId}
@@ -520,6 +611,7 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                 <button
                     onClick={handleAction}
                     disabled={isLoading || !wallet.connected}
+                    className="action-button"
                     style={{
                         width: '100%',
                         padding: '18px',
@@ -538,16 +630,17 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                         gap: '10px',
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
                         textTransform: 'uppercase',
-                        letterSpacing: '1px'
+                        letterSpacing: '1px',
+                        transition: 'all 0.2s ease'
                     }}
                 >
                     {isLoading ? (
                         <>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style={{ animation: 'spin 1.2s linear infinite' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
                                 <path fillRule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
                                 <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
                             </svg>
-                            {txId ? "Confirming..." : "Processing..."}
+                            {txId ? "Success!" : "Sending..."}
                         </>
                     ) : (
                         activeAction === "transfer" ? (
@@ -581,6 +674,10 @@ export function TokenActions({ tokenData, onActionSuccess }) {
                     @keyframes spin {
                         0% { transform: rotate(0deg); }
                         100% { transform: rotate(360deg); }
+                    }
+                    @keyframes fadeIn {
+                        0% { opacity: 0; transform: translateY(10px); }
+                        100% { opacity: 1; transform: translateY(0); }
                     }
                 `}</style>
             </div>

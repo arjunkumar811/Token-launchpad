@@ -12,8 +12,16 @@ export function TokenDisplay({ tokenData }) {
     useEffect(() => {
         if (tokenData?.mintAddress && tokenData?.associatedToken) {
             fetchBalance();
+
+            const intervalId = setInterval(() => {
+                if (tokenData?.mintAddress && tokenData?.associatedToken) {
+                    fetchBalance();
+                }
+            }, 3000);
+            
+            return () => clearInterval(intervalId);
         }
-    }, [tokenData?.mintAddress, tokenData?.associatedToken]);
+    }, [tokenData?.mintAddress, tokenData?.associatedToken, tokenData]);
     
     async function fetchBalance() {
         if (!tokenData || !tokenData.mintAddress || !tokenData.associatedToken) {
@@ -21,30 +29,49 @@ export function TokenDisplay({ tokenData }) {
             return;
         }
         
-        try {
+        if (tokenData._forceUpdate && balance !== null) {
             setIsLoading(true);
             
-
+            if (tokenData._lastAction) {
+                const { type, amount } = tokenData._lastAction;
+                const numAmount = parseFloat(amount) || 0;
+                
+                if (type === 'burn' || type === 'transfer') {
+                    setBalance(prevBalance => Math.max(0, (prevBalance || 0) - numAmount));
+                } else if (type === 'mint') {
+                    setBalance(prevBalance => (prevBalance || 0) + numAmount);
+                }
+            }
+            
+            setTimeout(() => setIsLoading(false), 100);
+        }
+        
+        try {
             const tokenAccountPubkey = new PublicKey(tokenData.associatedToken);
             
-
-            const accountInfo = await connection.getTokenAccountBalance(
-                tokenAccountPubkey,
-                "confirmed"
-            );
+            const balancePromise = connection.getTokenAccountBalance(tokenAccountPubkey, "processed");
             
-            if (accountInfo && accountInfo.value) {
-
-                const balanceValue = accountInfo.value.uiAmount;
+            const timeoutPromise = new Promise(resolve => {
+                setTimeout(() => {
+                    if (balance !== null) {
+                        setIsLoading(false);
+                    }
+                    resolve(null);
+                }, 500);
+            });
+            
+            const result = await Promise.race([balancePromise, timeoutPromise]);
+            
+            if (result && result.value) {
+                const balanceValue = result.value.uiAmount;
                 setBalance(balanceValue);
-            } else {
-
+            } else if (!result && balance === null) {
+                // Only set default if we don't have a balance yet
                 setBalance(tokenData.supply || 0);
             }
         } catch (error) {
             console.error("Error fetching token balance:", error);
-
-            setBalance(tokenData.supply || 0);
+            setBalance(balance !== null ? balance : (tokenData.supply || 0));
         } finally {
             setIsLoading(false);
         }
@@ -169,7 +196,10 @@ export function TokenDisplay({ tokenData }) {
                     <div style={{ fontWeight: 'bold', color: '#555' }}>Current Balance:</div>
                     <div>
                         {isLoading ? (
-                            <span style={{ color: '#888' }}>Loading...</span>
+                            <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <div className="balance-spinner"></div>
+                                <span style={{ color: '#2196f3', fontWeight: '500' }}>Updating...</span>
+                            </div>
                         ) : balance !== null ? (
                             <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>{balance}</span>
                         ) : (
