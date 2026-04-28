@@ -83,6 +83,8 @@ const FORM_STEPS: CreateTokenStep[] = [
   "Finalizing Metadata",
 ];
 
+const DEV_FALLBACK_METADATA_URI = "https://example.com/devnet-token-metadata.json";
+
 type FormSchemaValues = z.infer<typeof tokenFormSchema>;
 type FormSchemaInput = z.input<typeof tokenFormSchema>;
 type FormSchemaOutput = z.output<typeof tokenFormSchema>;
@@ -136,11 +138,6 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
     setValue("authoritySettings", next, { shouldDirty: true, shouldValidate: true });
 
   async function onSubmit(data: FormSchemaValues) {
-    if (!pinataConfigured) {
-      setErrorMessage("IPFS uploads are disabled until PINATA_JWT is set in .env.local and the dev server is restarted.");
-      return;
-    }
-
     if (!wallet.publicKey || !wallet.sendTransaction) {
       setErrorMessage("Connect a supported Solana wallet before creating a token.");
       return;
@@ -150,33 +147,42 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
       setErrorMessage(null);
       setResult(null);
 
-      setActiveStep("Uploading Image");
-      setStatusMessage("Uploading image to IPFS...");
-      const imageUpload = await uploadTokenImage(data.imageFile as File);
+      let metadataUri = DEV_FALLBACK_METADATA_URI;
 
-      setActiveStep("Uploading Metadata");
-      setStatusMessage("Generating metadata and uploading JSON to IPFS...");
-      const metadataUpload = await uploadTokenMetadata({
-        name: data.name,
-        symbol: data.symbol,
-        description: data.description ?? "",
-        imageUri: imageUpload.gatewayUrl,
-        imageMimeType: data.imageFile?.type ?? "image/png",
-        socialLinks: data.socialLinksEnabled
-          ? {
-              website: data.socialLinks.website ?? "",
-              twitter: data.socialLinks.twitter ?? "",
-              telegram: data.socialLinks.telegram ?? "",
-              discord: data.socialLinks.discord ?? "",
-            }
-          : DEFAULT_SOCIAL_LINKS,
-      });
+      if (pinataConfigured) {
+        setActiveStep("Uploading Image");
+        setStatusMessage("Uploading image to IPFS...");
+        const imageUpload = await uploadTokenImage(data.imageFile as File);
+
+        setActiveStep("Uploading Metadata");
+        setStatusMessage("Generating metadata and uploading JSON to IPFS...");
+        const metadataUpload = await uploadTokenMetadata({
+          name: data.name,
+          symbol: data.symbol,
+          description: data.description ?? "",
+          imageUri: imageUpload.gatewayUrl,
+          imageMimeType: data.imageFile?.type ?? "image/png",
+          socialLinks: data.socialLinksEnabled
+            ? {
+                website: data.socialLinks.website ?? "",
+                twitter: data.socialLinks.twitter ?? "",
+                telegram: data.socialLinks.telegram ?? "",
+                discord: data.socialLinks.discord ?? "",
+              }
+            : DEFAULT_SOCIAL_LINKS,
+        });
+
+        metadataUri = metadataUpload.gatewayUrl;
+      } else {
+        setActiveStep("Uploading Metadata");
+        setStatusMessage("PINATA_JWT not configured. Using fallback dev metadata to continue token creation...");
+      }
 
       const tokenResult = await createToken({
         authoritySettings: data.authoritySettings,
         connection,
         decimals: data.decimals,
-        metadataUri: metadataUpload.gatewayUrl,
+        metadataUri,
         name: data.name,
         sendTransaction: wallet.sendTransaction,
         supply: data.supply,
@@ -194,7 +200,11 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
         symbol: data.symbol,
         explorerUrl: getExplorerLink(tokenResult.mintAddress),
       });
-      setStatusMessage("Token created successfully.");
+      setStatusMessage(
+        pinataConfigured
+          ? "Token created successfully."
+          : "Token created successfully using fallback dev metadata.",
+      );
       setActiveStep("Finalizing Metadata");
       form.reset(DEFAULT_VALUES);
     } catch (error) {
@@ -341,17 +351,11 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
               ) : null}
             </div>
 
-            {!pinataConfigured ? (
-              <div className="rounded-2xl border border-amber-800 bg-amber-950/20 px-4 py-3 text-sm text-amber-200">
-                Add <span className="font-mono">PINATA_JWT</span> to <span className="font-mono">.env.local</span> and restart the dev server.
-              </div>
-            ) : null}
-
             <div className="flex justify-center sm:justify-start">
               <Button
                 type="submit"
                 size="lg"
-                disabled={isSubmitting || !pinataConfigured}
+                disabled={isSubmitting}
                 className="min-w-[220px]"
               >
                 {isSubmitting ? (
@@ -359,8 +363,6 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creating Token...
                   </>
-                ) : !pinataConfigured ? (
-                  "Configure Pinata First"
                 ) : (
                   <>
                     <Rocket className="mr-2 h-4 w-4" />
