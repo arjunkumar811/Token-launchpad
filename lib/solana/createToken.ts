@@ -16,7 +16,6 @@ import {
   toWeb3JsLegacyTransaction,
 } from "@metaplex-foundation/umi-web3js-adapters";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import type { SendTransactionOptions } from "@solana/wallet-adapter-base";
 
 import {
   CreateTokenParams,
@@ -155,11 +154,11 @@ async function sendAndConfirmWalletTransaction({
   transaction.feePayer = walletPublicKey;
   transaction.recentBlockhash = latestBlockhash.blockhash;
 
-  const signature = await sendTransaction(
-    transaction,
-    connection,
-    signers?.length ? ({ signers } as SendTransactionOptions) : undefined,
-  );
+  if (signers?.length) {
+    transaction.partialSign(...signers);
+  }
+
+  const signature = await sendTransaction(transaction, connection);
 
   const confirmation = await connection.confirmTransaction(
     {
