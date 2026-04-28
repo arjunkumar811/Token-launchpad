@@ -8,8 +8,8 @@ import {
   createSetAuthorityInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { createMetadataAccountV3, findMetadataPda, updateV1 } from "@metaplex-foundation/mpl-token-metadata";
-import { createNoopSigner, none, some } from "@metaplex-foundation/umi";
+import { createMetadataAccountV3, findMetadataPda } from "@metaplex-foundation/mpl-token-metadata";
+import { createNoopSigner, none } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   fromWeb3JsPublicKey,
@@ -77,7 +77,7 @@ export async function createToken({
     ),
   );
 
-  const mintSignature = await sendAndConfirmWalletTransaction({
+  await sendAndConfirmWalletTransaction({
     connection,
     sendTransaction,
     signers: [mintKeypair],
@@ -95,11 +95,21 @@ export async function createToken({
     symbol,
     walletPublicKey,
   });
+
   const metadataTransaction = new Transaction();
   metadataInstructions.forEach((instruction) => metadataTransaction.add(instruction));
 
+  const metadataSignature = await sendAndConfirmWalletTransaction({
+    connection,
+    sendTransaction,
+    transaction: metadataTransaction,
+    walletPublicKey,
+  });
+
+  const revokeTransaction = new Transaction();
+
   if (authoritySettings.revokeMintAuthority) {
-    metadataTransaction.add(
+    revokeTransaction.add(
       createSetAuthorityInstruction(
         mintKeypair.publicKey,
         walletPublicKey,
@@ -110,7 +120,7 @@ export async function createToken({
   }
 
   if (authoritySettings.revokeFreezeAuthority) {
-    metadataTransaction.add(
+    revokeTransaction.add(
       createSetAuthorityInstruction(
         mintKeypair.publicKey,
         walletPublicKey,
@@ -120,15 +130,15 @@ export async function createToken({
     );
   }
 
-  const metadataSignature =
-    metadataTransaction.instructions.length > 0
-      ? await sendAndConfirmWalletTransaction({
-          connection,
-          sendTransaction,
-          transaction: metadataTransaction,
-          walletPublicKey,
-        })
-      : mintSignature;
+  if (revokeTransaction.instructions.length > 0) {
+    onStepChange?.("Finalizing Metadata");
+    await sendAndConfirmWalletTransaction({
+      connection,
+      sendTransaction,
+      transaction: revokeTransaction,
+      walletPublicKey,
+    });
+  }
 
   return {
     mintAddress: mintKeypair.publicKey.toBase58(),
@@ -219,20 +229,6 @@ async function buildMetadataInstructions({
     isMutable: !revokeUpdateAuthority,
     collectionDetails: none(),
   }).useLegacyVersion();
-
-  if (revokeUpdateAuthority) {
-    builder.add(
-      updateV1(umi, {
-        authority: walletSigner,
-        mint: mintPublicKey,
-        metadata: metadataPda,
-        newUpdateAuthority: none(),
-        data: none(),
-        primarySaleHappened: none(),
-        isMutable: some(false),
-      }),
-    );
-  }
 
   const metadataTransaction = await builder.buildWithLatestBlockhash(umi);
   return toWeb3JsLegacyTransaction(metadataTransaction).instructions;
