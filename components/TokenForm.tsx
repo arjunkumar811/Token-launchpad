@@ -208,7 +208,7 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
       setActiveStep("Finalizing Metadata");
       form.reset(DEFAULT_VALUES);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Token creation failed.";
+      const message = getErrorMessage(error);
       setErrorMessage(message);
       setStatusMessage(null);
     }
@@ -485,4 +485,23 @@ function ResultRow({
       <p className={cn("text-sm text-zinc-100", mono && "break-all font-mono text-xs")}>{value}</p>
     </div>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const message = Reflect.get(error, "message");
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return "Token creation failed.";
 }

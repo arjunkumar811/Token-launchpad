@@ -46,7 +46,7 @@ export async function createToken({
 
   onStepChange?.("Creating Mint");
 
-  const transaction = new Transaction().add(
+  const mintTransaction = new Transaction().add(
     SystemProgram.createAccount({
       fromPubkey: walletPublicKey,
       newAccountPubkey: mintKeypair.publicKey,
@@ -69,7 +69,7 @@ export async function createToken({
   );
 
   onStepChange?.("Minting Tokens");
-  transaction.add(
+  mintTransaction.add(
     createMintToInstruction(
       mintKeypair.publicKey,
       associatedTokenAddress,
@@ -77,6 +77,14 @@ export async function createToken({
       amount,
     ),
   );
+
+  const mintSignature = await sendAndConfirmWalletTransaction({
+    connection,
+    sendTransaction,
+    signers: [mintKeypair],
+    transaction: mintTransaction,
+    walletPublicKey,
+  });
 
   onStepChange?.("Finalizing Metadata");
   const metadataInstructions = await buildMetadataInstructions({
@@ -88,10 +96,11 @@ export async function createToken({
     symbol,
     walletPublicKey,
   });
-  metadataInstructions.forEach((instruction) => transaction.add(instruction));
+  const metadataTransaction = new Transaction();
+  metadataInstructions.forEach((instruction) => metadataTransaction.add(instruction));
 
   if (authoritySettings.revokeMintAuthority) {
-    transaction.add(
+    metadataTransaction.add(
       createSetAuthorityInstruction(
         mintKeypair.publicKey,
         walletPublicKey,
@@ -102,7 +111,7 @@ export async function createToken({
   }
 
   if (authoritySettings.revokeFreezeAuthority) {
-    transaction.add(
+    metadataTransaction.add(
       createSetAuthorityInstruction(
         mintKeypair.publicKey,
         walletPublicKey,
@@ -112,6 +121,36 @@ export async function createToken({
     );
   }
 
+  const metadataSignature =
+    metadataTransaction.instructions.length > 0
+      ? await sendAndConfirmWalletTransaction({
+          connection,
+          sendTransaction,
+          transaction: metadataTransaction,
+          walletPublicKey,
+        })
+      : mintSignature;
+
+  return {
+    mintAddress: mintKeypair.publicKey.toBase58(),
+    network: DEFAULT_SOLANA_NETWORK,
+    signature: metadataSignature,
+  };
+}
+
+async function sendAndConfirmWalletTransaction({
+  connection,
+  sendTransaction,
+  signers,
+  transaction,
+  walletPublicKey,
+}: {
+  connection: Connection;
+  sendTransaction: CreateTokenParams["sendTransaction"];
+  signers?: Keypair[];
+  transaction: Transaction;
+  walletPublicKey: PublicKey;
+}) {
   const latestBlockhash = await connection.getLatestBlockhash("confirmed");
   transaction.feePayer = walletPublicKey;
   transaction.recentBlockhash = latestBlockhash.blockhash;
@@ -119,10 +158,10 @@ export async function createToken({
   const signature = await sendTransaction(
     transaction,
     connection,
-    { signers: [mintKeypair] } as SendTransactionOptions,
+    signers?.length ? ({ signers } as SendTransactionOptions) : undefined,
   );
 
-  await connection.confirmTransaction(
+  const confirmation = await connection.confirmTransaction(
     {
       signature,
       blockhash: latestBlockhash.blockhash,
@@ -131,11 +170,11 @@ export async function createToken({
     "confirmed",
   );
 
-  return {
-    mintAddress: mintKeypair.publicKey.toBase58(),
-    network: DEFAULT_SOLANA_NETWORK,
-    signature,
-  };
+  if (confirmation.value.err) {
+    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+  }
+
+  return signature;
 }
 
 async function buildMetadataInstructions({
