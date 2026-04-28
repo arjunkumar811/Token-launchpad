@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 11% 10%;
+  --foreground: 210 40% 96%;
+  --card: 220 11% 12%;
+  --card-foreground: 210 40% 96%;
+  --border: 220 10% 32%;
+  --input: 220 10% 32%;
+  --ring: 189 81% 49%;
+  --primary: 189 81% 49%;
+  --primary-foreground: 220 20% 8%;
+  --secondary: 220 11% 16%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 220 11% 16%;
+  --muted-foreground: 220 10% 72%;
+  --accent: 220 11% 18%;
+  --accent-foreground: 210 40% 96%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+}
+
+* {
+  @apply border-border;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-background text-foreground;
+  font-family: var(--font-inter), sans-serif;
+  background: #18181b;
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+.wallet-adapter-button-trigger {
+  align-items: center !important;
+  background: #232323 !important;
+  border: 1px solid #52525b !important;
+  border-radius: 1rem !important;
+  box-shadow: none !important;
+  color: #f4f4f5 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  height: 44px !important;
+  padding: 0 16px !important;
+  transition: border-color 200ms ease, background 200ms ease !important;
+}
+
+.wallet-adapter-button-trigger:hover {
+  transform: none;
+  border-color: #67e8f9 !important;
+  background: #27272a !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgba(24, 24, 27, 0.98) !important;
+  border: 1px solid #3f3f46 !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35) !important;
+}
