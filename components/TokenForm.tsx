@@ -181,6 +181,9 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
         metadataUri = metadataUpload.gatewayUrl;
       } else if (ENABLE_FALLBACK_METADATA) {
         metadataUri = DEV_FALLBACK_METADATA_URI;
+        if (!(data.imageFile instanceof File)) {
+          throw new Error("Token image is required for fallback metadata mode.");
+        }
         tokenImageUrl = URL.createObjectURL(data.imageFile);
         setActiveStep("Uploading Metadata");
         setStatusMessage("PINATA_JWT not configured. Using explicitly enabled fallback metadata...");
