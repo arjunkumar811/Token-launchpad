@@ -67,6 +67,7 @@ export type CreateTokenResult = {
 
 export type TokenCreationResult = CreateTokenResult & {
   explorerUrl: string;
+  imageUrl: string;
   name: string;
   symbol: string;
 };

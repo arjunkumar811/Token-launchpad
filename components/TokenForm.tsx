@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { AlertCircle, BadgeCheck, ExternalLink, Info, Loader2, Rocket } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -151,11 +152,13 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
       setIsUploading(true);
 
       let metadataUri: string;
+      let tokenImageUrl: string;
 
       if (pinataConfigured) {
         setActiveStep("Uploading Image");
         setStatusMessage("Uploading image to IPFS...");
         const imageUpload = await uploadTokenImage(data.imageFile as File);
+        tokenImageUrl = imageUpload.gatewayUrl;
 
         setActiveStep("Uploading Metadata");
         setStatusMessage("Generating metadata and uploading JSON to IPFS...");
@@ -178,6 +181,7 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
         metadataUri = metadataUpload.gatewayUrl;
       } else if (ENABLE_FALLBACK_METADATA) {
         metadataUri = DEV_FALLBACK_METADATA_URI;
+        tokenImageUrl = URL.createObjectURL(data.imageFile);
         setActiveStep("Uploading Metadata");
         setStatusMessage("PINATA_JWT not configured. Using explicitly enabled fallback metadata...");
       } else {
@@ -204,6 +208,7 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
 
       setResult({
         ...tokenResult,
+        imageUrl: tokenImageUrl,
         name: data.name,
         symbol: data.symbol,
         explorerUrl: getExplorerLink(tokenResult.mintAddress),
@@ -392,6 +397,16 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
             <div className="sm:col-span-2 flex items-center gap-2 text-cyan-100">
               <BadgeCheck className="h-5 w-5 text-cyan-400" />
               <span className="text-xl font-semibold">Token Created Successfully</span>
+            </div>
+            <div className="sm:col-span-2 rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+              <p className="mb-3 text-sm text-zinc-400">Token Image</p>
+              <Image
+                src={result.imageUrl}
+                alt={`${result.name} token logo`}
+                width={112}
+                height={112}
+                className="h-28 w-28 rounded-xl border border-zinc-600 object-cover"
+              />
             </div>
             <ResultRow label="Token Name" value={result.name} />
             <ResultRow label="Symbol" value={result.symbol} />

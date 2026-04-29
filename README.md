@@ -15,11 +15,13 @@ Create a `.env.local` file in the project root:
 ```env
 PINATA_JWT=your_pinata_jwt_here
 NEXT_PUBLIC_SOLANA_RPC_URL=
+NEXT_PUBLIC_ENABLE_FALLBACK_METADATA=false
 ```
 
 Notes:
 
 - `PINATA_JWT` is required. Without it, image and metadata uploads will fail.
+- `NEXT_PUBLIC_ENABLE_FALLBACK_METADATA` is optional. Set it to `true` only if you intentionally want to allow dev fallback metadata when Pinata is not configured.
 - `NEXT_PUBLIC_SOLANA_RPC_URL` is optional. If empty, the app uses Solana devnet's default RPC endpoint.
 
 ## Get a Pinata JWT
