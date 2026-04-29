@@ -15,8 +15,17 @@ export async function uploadTokenImage(file: File): Promise<UploadResponse> {
   });
 
   if (!response.ok) {
-    const payload = (await response.json()) as { error?: string };
-    throw new Error(payload.error ?? "Image upload failed.");
+    let errorMessage = "Image upload failed.";
+    try {
+      const payload = (await response.json()) as { error?: string };
+      errorMessage = payload.error ?? errorMessage;
+    } catch {
+      const fallbackText = await response.text();
+      if (fallbackText) {
+        errorMessage = fallbackText;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   return (await response.json()) as UploadResponse;
@@ -55,8 +64,17 @@ export async function uploadTokenMetadata(
   });
 
   if (!response.ok) {
-    const body = (await response.json()) as { error?: string };
-    throw new Error(body.error ?? "Metadata upload failed.");
+    let errorMessage = "Metadata upload failed.";
+    try {
+      const body = (await response.json()) as { error?: string };
+      errorMessage = body.error ?? errorMessage;
+    } catch {
+      const fallbackText = await response.text();
+      if (fallbackText) {
+        errorMessage = fallbackText;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
   return (await response.json()) as UploadResponse;

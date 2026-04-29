@@ -84,6 +84,7 @@ const FORM_STEPS: CreateTokenStep[] = [
 ];
 
 const DEV_FALLBACK_METADATA_URI = "https://example.com/devnet-token-metadata.json";
+const ENABLE_FALLBACK_METADATA = process.env.NEXT_PUBLIC_ENABLE_FALLBACK_METADATA === "true";
 
 type FormSchemaValues = z.infer<typeof tokenFormSchema>;
 type FormSchemaInput = z.input<typeof tokenFormSchema>;
@@ -108,6 +109,7 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<CreateTokenStep | null>(null);
   const [result, setResult] = useState<TokenCreationResult | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const form = useForm<FormSchemaInput, unknown, FormSchemaOutput>({
     resolver: zodResolver(tokenFormSchema),
@@ -146,8 +148,9 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
     try {
       setErrorMessage(null);
       setResult(null);
+      setIsUploading(true);
 
-      let metadataUri = DEV_FALLBACK_METADATA_URI;
+      let metadataUri: string;
 
       if (pinataConfigured) {
         setActiveStep("Uploading Image");
@@ -173,9 +176,14 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
         });
 
         metadataUri = metadataUpload.gatewayUrl;
-      } else {
+      } else if (ENABLE_FALLBACK_METADATA) {
+        metadataUri = DEV_FALLBACK_METADATA_URI;
         setActiveStep("Uploading Metadata");
-        setStatusMessage("PINATA_JWT not configured. Using fallback dev metadata to continue token creation...");
+        setStatusMessage("PINATA_JWT not configured. Using explicitly enabled fallback metadata...");
+      } else {
+        throw new Error(
+          "PINATA_JWT is not configured. Configure Pinata or explicitly enable fallback metadata.",
+        );
       }
 
       const tokenResult = await createToken({
@@ -201,16 +209,19 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
         explorerUrl: getExplorerLink(tokenResult.mintAddress),
       });
       setStatusMessage(
-        pinataConfigured
+        pinataConfigured || !ENABLE_FALLBACK_METADATA
           ? "Token created successfully."
           : "Token created successfully using fallback dev metadata.",
       );
       setActiveStep("Finalizing Metadata");
       form.reset(DEFAULT_VALUES);
     } catch (error) {
+      console.error("Token creation flow failed", error);
       const message = getErrorMessage(error);
       setErrorMessage(message);
       setStatusMessage(null);
+    } finally {
+      setIsUploading(false);
     }
   }
 
@@ -336,9 +347,9 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
                 ))}
               </div>
 
-              {statusMessage ? (
+                {statusMessage ? (
                 <div className="flex items-center gap-3 rounded-2xl border border-cyan-700/60 bg-cyan-950/30 px-4 py-3 text-sm text-cyan-200">
-                  <Loader2 className={cn("h-4 w-4", isSubmitting && "animate-spin")} />
+                  <Loader2 className={cn("h-4 w-4", (isSubmitting || isUploading) && "animate-spin")} />
                   {statusMessage}
                 </div>
               ) : null}
@@ -355,13 +366,13 @@ export function TokenForm({ pinataConfigured }: { pinataConfigured: boolean }) {
               <Button
                 type="submit"
                 size="lg"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isUploading}
                 className="min-w-[220px]"
               >
-                {isSubmitting ? (
+                {isSubmitting || isUploading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Token...
+                    Uploading and Creating Token...
                   </>
                 ) : (
                   <>

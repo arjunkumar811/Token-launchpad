@@ -13,6 +13,17 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as Record<string, unknown>;
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const symbol = typeof body.symbol === "string" ? body.symbol.trim() : "";
+  const description = typeof body.description === "string" ? body.description.trim() : "";
+  const image = typeof body.image === "string" ? body.image.trim() : "";
+
+  if (!name || !symbol || !description || !image) {
+    return NextResponse.json(
+      { error: "Metadata must include name, symbol, description, and image." },
+      { status: 400 },
+    );
+  }
 
   const response = await fetch(PINATA_JSON_ENDPOINT, {
     method: "POST",
@@ -23,13 +34,20 @@ export async function POST(request: Request) {
     body: JSON.stringify({
       pinataContent: body,
       pinataMetadata: {
-        name: typeof body.name === "string" ? `${body.name}-metadata` : "token-metadata",
+        name: `${name}-metadata`,
       },
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
+    console.error("Pinata metadata upload failed", {
+      status: response.status,
+      statusText: response.statusText,
+      errorBody,
+      metadataName: name,
+      metadataSymbol: symbol,
+    });
 
     return NextResponse.json(
       { error: `Pinata metadata upload failed: ${errorBody}` },
